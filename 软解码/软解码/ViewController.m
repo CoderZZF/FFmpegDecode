@@ -18,6 +18,8 @@
     AVFrame *pFrame;
     AVPacket packet;
     OpenGLView20 *glView;
+    
+    int videoIndex;
 }
 
 @end
@@ -47,7 +49,7 @@
     };
     
     // 4. 获取视频信息
-    int videoIndex = -1;
+    videoIndex = -1;
     for (int i = 0; i < pFormatCtx->nb_streams; i++) {
         if (pFormatCtx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
             videoIndex = i;
@@ -84,28 +86,30 @@
     dispatch_sync(dispatch_get_global_queue(0, 0), ^{
         while (av_read_frame(pFormatCtx, &packet) >= 0) {
             int got_picture = -1;
-            if (avcodec_decode_video2(pCodecCtx, pFrame, &got_picture, &packet) < 0) {
-                NSLog(@"解码失败,解码下一帧数据");
-                continue;
-            };
-            
-            if (got_picture) {
-                char *buf = (char *)malloc(pFrame->width * pFrame->height * 3 / 2);
-                int w = pFrame->width;
-                int h = pFrame->height;
-                char *y = buf;
-                char *u = y + w * h;
-                char *v = u + w * h / 4;
-                for (int i=0; i<h; i++)
-                    memcpy(y + w * i, pFrame->data[0] + pFrame->linesize[0] * i, w);
-                for (int i=0; i<h/2; i++)
-                    memcpy(u + w / 2 * i, pFrame->data[1] + pFrame->linesize[1] * i, w / 2);
-                for (int i=0; i<h/2; i++)
-                    memcpy(v + w / 2 * i, pFrame->data[2] + pFrame->linesize[2] * i, w / 2);
+            if (packet.stream_index == videoIndex) {
+                if (avcodec_decode_video2(pCodecCtx, pFrame, &got_picture, &packet) < 0) {
+                    NSLog(@"解码失败,解码下一帧数据");
+                    continue;
+                };
                 
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [glView displayYUV420pData:buf width:w height:h];
-                });
+                if (got_picture) {
+                    char *buf = (char *)malloc(pFrame->width * pFrame->height * 3 / 2);
+                    int w = pFrame->width;
+                    int h = pFrame->height;
+                    char *y = buf;
+                    char *u = y + w * h;
+                    char *v = u + w * h / 4;
+                    for (int i=0; i<h; i++)
+                        memcpy(y + w * i, pFrame->data[0] + pFrame->linesize[0] * i, w);
+                    for (int i=0; i<h/2; i++)
+                        memcpy(u + w / 2 * i, pFrame->data[1] + pFrame->linesize[1] * i, w / 2);
+                    for (int i=0; i<h/2; i++)
+                        memcpy(v + w / 2 * i, pFrame->data[2] + pFrame->linesize[2] * i, w / 2);
+                    
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [glView displayYUV420pData:buf width:w height:h];
+                    });
+                }
             }
         }
     });
